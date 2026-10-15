@@ -19,3 +19,7 @@ scripts/git-hooks/* text eol=lf
 # 32 CRLF / 11 LF），跨平台一致性与 diff 噪声都要求归一。
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# 记忆控制台启动器（2026-10-15）：cmd.exe 对 LF 行尾的 .bat 里 goto/标签解析不可靠，
+# 本文件用了标签跳转（选 Python 解释器），故单独钉 CRLF；其余 .bat 不受影响。
+dsh/lingshu-console.bat text eol=crlf

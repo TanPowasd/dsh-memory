@@ -3,7 +3,8 @@
  * cli.ts —— `lingshu` 主命令入口（npx 兼容分发器）
  *
  * 为什么有三个 bin（package.json bin）：
- *   · `lingshu`       → 本文件：`lingshu init` 分发到 init.ts（未来其它子命令也挂这）；
+ *   · `lingshu`       → 本文件：`lingshu init` 分发到 init.ts，`lingshu console` 拉起
+ *     Python 侧记忆控制台 `python -m md_cg.console`（其它子命令也挂这）；
  *   · `lingshu-init`  → lib/init.js：单命令直入（不想敲子命令的场景）；
  *   · `dsh-memory`    → 本文件：npx 的同名匹配规则——`npx @furongjun1999/dsh-memory init`
  *     在包有多个 bin 时，只会自动运行**与包名末段同名**的 bin（npm 官方口径），
@@ -11,10 +12,12 @@
  *
  * 零运行时依赖：只用 Node 内置模块。
  */
-import { resolve } from 'node:path'
+import { resolve, dirname, delimiter } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { realpathSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { runInit } from './init.js'
+import { defaultPython, explainMissingPython } from './lib/python_path.js'
 
 const USAGE = [
   '灵枢（Lingshu）命令行',
@@ -24,11 +27,40 @@ const USAGE = [
   '命令：',
   '  init [选项]    一键配置生成器（交互三问；参数齐则跳过问答）',
   '                 选项：--end <dsh|claude|codex|generic> --root <dir> --python <interpreter>',
+  '  console [选项] 打开本机只读记忆控制台（浏览器）；解释器取 MDCG_PYTHON，缺省按平台',
+  '                 选项：--root <dir> --port <n> --clearance <密级> --no-browser',
   '',
   '示例：',
   '  npx @furongjun1999/dsh-memory init',
   '  npx @furongjun1999/dsh-memory init -- --end claude --root D:/mem --python python3',
+  '  lingshu console',
 ].join('\n')
+
+/** 包根（lib/ 的上一级）：md_cg 随包分发在此，console 子进程靠它 import。 */
+const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+/**
+ * `lingshu console`：拉起 `python -X utf8 -m md_cg.console`，stdio 直通，返回子进程退出码。
+ * 解释器沿用 python_path.defaultPython（MDCG_PYTHON → 平台默认，不做 PATH 扫描回退）；
+ * ENOENT 时打印同款修复指引并返回 127（不静默）。仅导出供测试。
+ */
+export function runConsole(args: string[], env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  const python = defaultPython(process.platform, env)
+  const childEnv = {
+    ...env,
+    PYTHONUTF8: '1',
+    PYTHONPATH: env.PYTHONPATH ? `${PKG_ROOT}${delimiter}${env.PYTHONPATH}` : PKG_ROOT,
+  }
+  return new Promise((done) => {
+    const child = spawn(python, ['-X', 'utf8', '-m', 'md_cg.console', ...args],
+      { env: childEnv, stdio: 'inherit', windowsHide: false })
+    child.on('error', (e: NodeJS.ErrnoException) => {
+      process.stderr.write(`lingshu console：${e.code === 'ENOENT' ? explainMissingPython(python) : e.message}\n`)
+      done(127)
+    })
+    child.on('exit', (code) => done(code ?? 1))
+  })
+}
 
 /** 入口分发：argv 为去掉 node 与本脚本路径后的参数。仅导出供测试。 */
 export async function main(argv: string[]): Promise<number> {
@@ -37,6 +69,7 @@ export async function main(argv: string[]): Promise<number> {
     await runInit(argv.slice(1))
     return 0
   }
+  if (cmd === 'console') return runConsole(argv.slice(1))
   process.stdout.write(`${USAGE}\n`)
   if (cmd === '--help' || cmd === '-h' || cmd === 'help') return 0
   if (cmd !== '') process.stderr.write(`未知命令「${cmd}」。\n`)
