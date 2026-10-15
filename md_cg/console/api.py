@@ -14,7 +14,8 @@ import os
 import time
 
 __all__ = ["open_cg", "make_principal", "resolve_root", "is_memory_root", "overview", "search", "browse",
-           "node", "timeline", "review", "SNIPPET_MAX", "PAGE_MAX"]
+           "node", "timeline", "review", "related", "inspect", "SNIPPET_MAX", "PAGE_MAX",
+           "RELATED_TIERS", "SIM_CLEARANCES"]
 
 #: 列表/搜索摘要截断字数（只影响显示，正文全文在节点详情里）。
 SNIPPET_MAX = 160
@@ -290,3 +291,137 @@ def review(cg):
     items.sort(key=_t)
     return {"ok": True, "items": items, "total": len(items),
             "hint": "首版只读：裁决请用 python -m md_cg.review_cli。"}
+
+
+#: 关联记忆三圈（判据全部取自索引条目已有字段，白箱可查；同一条只落在最内的一圈）。
+RELATED_TIERS = (
+    ("inner", "内圈 · 强关联", "血缘：本条派生自它，或它派生自本条（derived_from）"),
+    ("mid", "中圈 · 相关", "引用：本条引用它，或它引用本条（edges）"),
+    ("outer", "外圈 · 弱相关", "共享标签（tags 交集非空，按共享数排序）"),
+)
+
+
+# 生效条件：node_id 去空白为空、不在索引或对当前身份不可见 → 与 node() 同形的 node_not_found（不泄露存在性）；否则只在可见条目（_visible_entries）里找三圈——inner：本条 derived_from 列出的父 + derived_from 含本条的子；mid：本条 edges 的 target + edges 指向本条的条目；outer：与本条 tags 交集非空的条目（按交集数降序、created_at 降序）；自身恒排除，跨圈去重（先到内圈者不再进外圈），每圈截 cap（缺省 8，非数回落 8 并钳 [1, PAGE_MAX]）并带 total/truncated；只对入选条目 cg.get 读正文。
+def related(cg, node_id, cap=8):
+    from .. import provenance
+    try:
+        cap = max(1, min(PAGE_MAX, int(cap)))
+    except (TypeError, ValueError):
+        cap = 8
+    nid = str(node_id or "").strip()
+    vis = dict(_visible_entries(cg))
+    me = vis.get(nid) if nid else None
+    if me is None:
+        return {"ok": False, "error": "node_not_found", "id": nid,
+                "hint": "找不到这条记忆，或当前身份看不到它。"}
+    why = {"inner": {}, "mid": {}, "outer": {}}
+
+    def _put(tier, oid, reason):
+        if oid == nid or oid not in vis:
+            return
+        why[tier].setdefault(oid, []).append(reason)
+
+    for par in provenance.as_list(me.get("derived_from")):
+        _put("inner", str(par), "本条派生自它")
+    for ed in me.get("edges") or []:
+        if isinstance(ed, dict):
+            _put("mid", str(ed.get("target")), "本条引用它（%s）" % (ed.get("relation_type") or "引用"))
+    tags = set(me.get("tags") or [])
+    for oid, oe in vis.items():
+        if nid in [str(x) for x in provenance.as_list(oe.get("derived_from"))]:
+            _put("inner", oid, "它派生自本条")
+        for ed in oe.get("edges") or []:
+            if isinstance(ed, dict) and str(ed.get("target")) == nid:
+                _put("mid", oid, "它引用本条（%s）" % (ed.get("relation_type") or "引用"))
+        shared = sorted(tags & set(oe.get("tags") or []))
+        if shared:
+            _put("outer", oid, "共享标签：" + "、".join(shared))
+    for k in why["inner"]:
+        why["mid"].pop(k, None)
+        why["outer"].pop(k, None)
+    for k in why["mid"]:
+        why["outer"].pop(k, None)
+
+    def _t(oid):
+        try:
+            return float(vis[oid].get("created_at") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    tiers = []
+    for key, label, rule in RELATED_TIERS:
+        ids = list(why[key])
+        if key == "outer":
+            ids.sort(key=lambda o: (len(set(me.get("tags") or []) & set(vis[o].get("tags") or [])), _t(o)),
+                     reverse=True)
+        else:
+            ids.sort(key=_t, reverse=True)
+        items = []
+        for oid in ids[:cap]:
+            c = _card(oid, vis[oid], cg.get(oid))
+            c["why"] = why[key][oid]
+            items.append(c)
+        tiers.append({"key": key, "label": label, "rule": rule, "items": items,
+                      "total": len(ids), "truncated": len(ids) > cap})
+    return {"ok": True, "id": nid, "tiers": tiers}
+
+
+#: 显微镜可模拟的密级（restricted 是错误处置标记、不是身份档，不列入）。
+SIM_CLEARANCES = ("public", "internal", "private", "secret")
+#: 模拟身份的角色：平级记录单元（非设计者、非处置链路），另起一个会话。
+SIM_ROLE = "recorder"
+
+
+# 生效条件：sens 为 _readable 回填后的密级、sim 为模拟身份；仅在 _readable 已判「不可见」后调用，给出中文原因（判定本身不在此处）：sens 不在 SENSITIVITY_ORDER → 非法值隔离；== restricted → 处置链路限读；sim.allows(sens) 为假 → 密级高于身份；其余 → 会话绑定（private/secret 只对写入它的会话可见）。
+def _hidden_reason(sens, sim):
+    from ..security import SENSITIVITY_ORDER
+    if sens not in SENSITIVITY_ORDER:
+        return "密级值非法（%s），按隔离处理" % sens
+    if sens == "restricted":
+        return "错误处置标记：只有设计者 / 编排 / 核验角色能读"
+    if not sim.allows(sens):
+        return "密级 %s 高于这个身份的 %s" % (sens, sim.clearance)
+    return "%s 记忆按会话绑定：只有写入它的那次会话能看到" % sens
+
+
+# 生效条件：clearance 不在 SIM_CLEARANCES → {"ok":False,"error":"bad_clearance"}；先跑 search(cg, q, k=k)（record=False，失败原样返回）；再构造模拟身份 Principal(actor="console-sim", clearance, can_write=False, can_admin=False, role=SIM_ROLE, session=None→新会话)，对每条命中以 type(cg)._readable 绑定到 {principal: 模拟身份, _read: cg._read} 的代理上判可见（与库读隔离同一函数，传入条目副本，不改真索引）；cg 无 _readable → 全部记为可见并带 visibility_model=None 如实标出；返回每条 {..., sim_visible, hidden_reason} 与按资格四态 / 被挡计数，note 写明「逐条模拟、未以该身份重跑检索」。
+def inspect(cg, q, clearance="internal", k=20):
+    clearance = str(clearance or "internal").strip()
+    if clearance not in SIM_CLEARANCES:
+        return {"ok": False, "error": "bad_clearance",
+                "hint": "可选密级：" + " / ".join(SIM_CLEARANCES)}
+    res = search(cg, q, k=k)
+    if not res.get("ok"):
+        return res
+    from types import SimpleNamespace
+    from ..security import Principal
+    sim = Principal(actor="console-sim", clearance=clearance, can_write=False,
+                    can_admin=False, role=SIM_ROLE, auth_mode="local-ui")
+    judge = getattr(type(cg), "_readable", None)
+    proxy = SimpleNamespace(principal=sim, _read=getattr(cg, "_read", None))
+    nodes = (cg.index or {}).get("nodes", {})
+    counts = {"ACCEPT": 0, "DEFER": 0, "REJECT": 0, "BLINDSPOT": 0, "other": 0, "hidden": 0}
+    for c in res["items"]:
+        st = (c.get("qualification") or {}).get("state")
+        counts[st if st in counts else "other"] += 1
+        if not callable(judge):
+            c["sim_visible"], c["hidden_reason"] = True, None
+            continue
+        e = dict(nodes.get(c["id"]) or {})
+        try:
+            ok = bool(judge(proxy, e))
+        except Exception as exc:                             # noqa: BLE001 —— 判定异常 = 不可见
+            ok, e["sensitivity"] = False, "<判定异常 %s>" % type(exc).__name__
+        c["sim_visible"] = ok
+        c["hidden_reason"] = None if ok else _hidden_reason(e.get("sensitivity"), sim)
+        if not ok:
+            counts["hidden"] += 1
+    res.update({
+        "clearance": clearance,
+        "identity": {"clearance": clearance, "role": SIM_ROLE, "can_admin": False,
+                     "session": "新会话（不是写入这些记忆的会话）"},
+        "visibility_model": "MdCGSecure._readable" if callable(judge) else None,
+        "counts": counts,
+        "note": "可见性是对当前命中逐条模拟的，没有以该身份重跑检索；"
+                "接近截断上限时，那个身份实际看到的排序可能不同（存疑）。",
+    })
+    return res

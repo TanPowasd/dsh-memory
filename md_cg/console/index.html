@@ -59,7 +59,40 @@ nav .count{margin-left:auto;font-size:12px;color:var(--faint)}
 nav a.on .count{color:var(--accent)}
 nav .sep{height:1px;background:var(--line);margin:10px 6px}
 nav .label{font-size:12px;color:var(--faint);padding:4px 12px}
-nav .rootpath{font-size:12px;color:var(--faint);padding:4px 12px;word-break:break-all;margin-top:auto}
+nav .foot{margin-top:auto;padding:10px 12px 2px;border-top:1px solid var(--line)}
+nav .rootpath{font-size:12px;color:var(--faint);word-break:break-all;margin-top:4px}
+.status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--sub)}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.status.ok i{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+.status.bad i{background:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent)}
+.status.bad{color:var(--bad)}
+/* 按层分色：卡片左缘色条 + 层徽章同色 */
+[data-ly]{--ly:var(--accent)}
+[data-ly="knowledge"]{--ly:#3b6ff5} [data-ly="contextual"]{--ly:#14a38b} [data-ly="self"]{--ly:#d0569b}
+[data-ly="goals"]{--ly:#d08a12} [data-ly="anchor"]{--ly:#b8860b} [data-ly="structural"]{--ly:#6b7a90}
+[data-ly="rejected"]{--ly:#d14b4b} [data-ly="unresolved"]{--ly:#8a94a6}
+.item[data-ly]{border-left:3px solid var(--ly)}
+.badge.b-layer[data-ly]{background:color-mix(in srgb,var(--ly) 14%,transparent);color:var(--ly)}
+nav a[data-ly]:before{content:"";width:8px;height:8px;border-radius:3px;background:var(--ly);flex:none}
+/* 显微镜 */
+.ms-form{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ms-form input{flex:1;min-width:220px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:0 12px;font:inherit}
+.ms-form input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.strip{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+.strip span{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--sub)}
+.strip b{color:var(--txt);margin-left:4px}
+.why{margin-top:8px;font-size:12.5px;color:var(--sub);display:flex;flex-direction:column;gap:3px}
+.why .no{color:var(--bad)} .why .yes{color:var(--ok)}
+/* 关联三圈 */
+.ring{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;position:relative}
+.ring .rh{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.ring .rh i{width:10px;height:10px;border-radius:50%;border:2px solid var(--accent)}
+.ring.mid .rh i{border-color:color-mix(in srgb,var(--accent) 60%,var(--faint))}
+.ring.outer .rh i{border-color:var(--faint);border-style:dashed}
+.ring .rule{font-size:12px;color:var(--faint);margin:2px 0 6px}
+.ring .ri{display:block;width:100%;text-align:left;padding:6px 8px;border-radius:8px;font-size:13px}
+.ring .ri:hover{background:var(--bg)}
+.ring .ri small{display:block;color:var(--faint);font-size:12px}
 
 /* 主区 */
 main{overflow:auto;padding:24px 28px 60px;position:relative}
@@ -76,6 +109,7 @@ h1{font-size:20px;font-weight:700;margin-bottom:4px}
 .bars .row{display:grid;grid-template-columns:90px 1fr 48px;align-items:center;gap:10px;margin:7px 0;cursor:pointer}
 .bars .track{height:8px;border-radius:99px;background:var(--bg);overflow:hidden}
 .bars .fill{height:100%;background:var(--accent);border-radius:99px}
+.bars .fill[data-ly]{background:var(--ly)}
 .bars .v{text-align:right;color:var(--sub);font-variant-numeric:tabular-nums}
 
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
@@ -164,13 +198,21 @@ details pre{white-space:pre-wrap;word-break:break-all;font:12px/1.5 Consolas,mon
 </header>
 <nav id="nav">
   <a href="#/" data-v="home">◎ 概览</a>
+  <div class="sep"></div>
+  <div class="label">记忆库</div>
   <a href="#/browse" data-v="browse">☰ 全部记忆 <span class="count" id="c-total"></span></a>
+  <div id="layers"></div>
+  <div class="sep"></div>
+  <div class="label">洞察</div>
+  <a href="#/inspect" data-v="inspect">⌖ 记忆显微镜</a>
+  <div class="sep"></div>
+  <div class="label">动态</div>
   <a href="#/timeline" data-v="timeline">◷ 时间线</a>
   <a href="#/review" data-v="review">✓ 待复核 <span class="count" id="c-review"></span></a>
-  <div class="sep"></div>
-  <div class="label">按层浏览</div>
-  <div id="layers"></div>
-  <div class="rootpath" id="rootpath"></div>
+  <div class="foot">
+    <div class="status" id="status" role="status"><i></i><span>正在连接…</span></div>
+    <div class="rootpath" id="rootpath"></div>
+  </div>
 </nav>
 <main id="main" tabindex="-1"></main>
 <aside id="drawer" aria-label="记忆详情">
@@ -185,7 +227,7 @@ details pre{white-space:pre-wrap;word-break:break-all;font:12px/1.5 Consolas,mon
   <div><span>上一条 / 下一条</span><span><kbd>k</kbd> <kbd>j</kbd></span></div>
   <div><span>打开选中</span><kbd>Enter</kbd></div>
   <div><span>关闭详情 / 弹窗</span><kbd>Esc</kbd></div>
-  <div><span>概览 / 全部 / 时间线</span><span><kbd>g</kbd> <kbd>b</kbd> <kbd>t</kbd></span></div>
+  <div><span>概览 / 全部 / 时间线 / 显微镜</span><span><kbd>g</kbd> <kbd>b</kbd> <kbd>t</kbd> <kbd>i</kbd></span></div>
 </div></div>
 <script>
 "use strict";
@@ -194,7 +236,10 @@ const LAYER = {anchor:"锚点",structural:"结构",knowledge:"知识",contextual
   rejected:"已否定",unresolved:"未决",goals:"目标"};
 const LIFE = {active:"活跃",converged:"已收敛",demoted:"已降级",archived:"已归档"};
 const VER = {unverified:"未验证",verified:"已验证",doubted:"存疑",rechecking:"复核中",expired:"已过期"};
-const QUAL = {USABLE:"可用",BLINDSPOT:"盲区",CONFLICT:"冲突",REJECTED:"已否定"};
+// 资格四态：与 md_cg.mdcg.STATE_* 同名（ACCEPT/DEFER/REJECT/BLINDSPOT）。
+const QUAL = {ACCEPT:"可用",DEFER:"待确认",REJECT:"不适用",BLINDSPOT:"盲区"};
+const QUAL_CLS = {ACCEPT:"b-ok",DEFER:"b-warn",REJECT:"b-bad",BLINDSPOT:"b-warn"};
+const CLEAR = {public:"公开",internal:"内部",private:"私密",secret:"机密"};
 const $ = s => document.querySelector(s);
 function el(tag, attrs, ...kids){
   const n = document.createElement(tag);
@@ -223,8 +268,15 @@ function verBadge(v){
   const cls = v==="verified"?"b-ok":(v==="doubted"||v==="expired")?"b-bad":v==="rechecking"?"b-warn":"tag";
   return el("span",{class:"badge "+cls}, VER[v]||v||"未标注");
 }
+function setStatus(ok, text){
+  const s = $("#status"); s.className = "status "+(ok?"ok":"bad"); s.lastChild.textContent = text;
+}
 async function get(path){
-  const r = await fetch(path,{headers:{Accept:"application/json"}});
+  let r;
+  try { r = await fetch(path,{headers:{Accept:"application/json"}}); }
+  catch(e){ setStatus(false,"连接断开：控制台窗口可能已关闭");
+    return {ok:false,error:"offline",hint:"连不上控制台服务。请确认那个黑色窗口还开着，或重新双击启动。"}; }
+  setStatus(true,"已连接 · 只读");
   let j; try { j = await r.json(); } catch(e){ j = {ok:false,error:"bad_json",detail:String(e)}; }
   if (!r.ok && j.ok !== false) j = {ok:false,error:"http_"+r.status};
   return j;
@@ -245,18 +297,18 @@ function select(i){
   xs.forEach((x,k)=>x.classList.toggle("sel", k===selIdx));
   xs[selIdx].scrollIntoView({block:"nearest"});
 }
-function card(c){
+function card(c, extra){
   const top = el("div",{class:"top"},
-    el("span",{class:"badge b-layer"}, LAYER[c.layer]||c.layer||"未分层"),
-    c.qualification && c.qualification.state ? el("span",{class:"badge "+(c.qualification.state==="USABLE"?"b-ok":"b-warn"),
+    el("span",{class:"badge b-layer","data-ly":c.layer||null}, LAYER[c.layer]||c.layer||"未分层"),
+    c.qualification && c.qualification.state ? el("span",{class:"badge "+(QUAL_CLS[c.qualification.state]||"tag"),
       title:c.qualification.reason||""}, QUAL[c.qualification.state]||c.qualification.state) : null,
     c.verification_state ? verBadge(c.verification_state) : null,
     el("span",{class:"id"}, c.id));
   const meta = el("div",{class:"meta"},
     el("span",{title:fmtTime(c.created_at)}, ago(c.created_at)),
     ...(c.tags||[]).slice(0,6).map(t=>el("span",{class:"tag"},t)));
-  return el("button",{class:"item","data-id":c.id,onclick:()=>openNode(c.id)}, top,
-    el("div",{class:"snip"}, c.unreadable ? "（读不到正文：文件缺失或无权解密）" : (c.snippet || "（空）")), meta);
+  return el("button",{class:"item","data-id":c.id,"data-ly":c.layer||null,onclick:()=>openNode(c.id)}, top,
+    el("div",{class:"snip"}, c.unreadable ? "（读不到正文：文件缺失或无权解密）" : (c.snippet || "（空）")), meta, extra||null);
 }
 
 // ---- 视图 ----
@@ -269,7 +321,7 @@ async function loadOverview(){
   $("#rootpath").textContent = j.root;
   const L = $("#layers"); L.replaceChildren();
   Object.entries(j.by_layer).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>
-    L.appendChild(el("a",{href:"#/browse/"+encodeURIComponent(k),"data-v":"layer:"+k},
+    L.appendChild(el("a",{href:"#/browse/"+encodeURIComponent(k),"data-v":"layer:"+k,"data-ly":k},
       LAYER[k]||k, el("span",{class:"count"},v))));
   return j;
 }
@@ -286,7 +338,7 @@ async function viewHome(){
   const bars = (obj, map, hrefOf) => { const max = Math.max(1,...Object.values(obj));
     return el("div",{class:"bars"}, Object.entries(obj).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
       el("div",{class:"row",onclick:hrefOf?()=>{location.hash=hrefOf(k)}:null},
-        el("span",null,map[k]||k), el("div",{class:"track"},el("div",{class:"fill",style:"width:"+(v/max*100).toFixed(1)+"%"})),
+        el("span",null,map[k]||k), el("div",{class:"track"},el("div",{class:"fill","data-ly":map===LAYER?k:null,style:"width:"+(v/max*100).toFixed(1)+"%"})),
         el("span",{class:"v"},v)))); };
   setMain(
     el("h1",null,"概览"), el("p",{class:"lead"},"你的 Agent 目前记住了这些。点任意数字进入对应列表。"),
@@ -329,7 +381,7 @@ async function viewSearch(q){
   if (!j.ok) return setMain(el("h1",null,"搜索"), errBox(j));
   selIdx = -1;
   setMain(el("h1",null,"“"+q+"”"),
-    el("p",{class:"lead"}, j.total ? "找到 "+j.total+" 条，按相关度排序。标签“盲区”表示这条记忆要素不全，引用前请自己判断。" : ""),
+    el("p",{class:"lead"}, j.total ? "找到 "+j.total+" 条，按相关度排序。“盲区”表示这条记忆要素不全，引用前请自己判断；想看每条为什么被想起，用记忆显微镜。" : ""),
     j.total ? el("div",{class:"list"}, j.items.map(card))
       : el("div",{class:"empty"}, el("div",{class:"big"},"🔍"), "没有找到相关记忆。换个说法试试，或者少用几个词。"));
   if (j.total) select(0);
@@ -372,12 +424,62 @@ async function viewReview(){
       : el("div",{class:"empty"}, el("div",{class:"big"},"✅"), "没有待复核的内容。"));
 }
 
+// ---- 记忆显微镜：每条命中为什么被想起 / 换个身份会不会被挡 ----
+async function viewInspect(q, clr){
+  clr = CLEAR[clr] ? clr : "internal";
+  const input = el("input",{type:"search",placeholder:"输入一句 Agent 可能会问的话，比如“我平时几点跑步”",value:q||"","aria-label":"显微镜查询"});
+  const go = c => { const v = input.value.trim(); if (v) location.hash = "/inspect/"+encodeURIComponent(c||clr)+"/"+encodeURIComponent(v); };
+  const form = el("form",{class:"ms-form",onsubmit:e=>{e.preventDefault();go();}}, input, el("button",{class:"btn",type:"submit"},"检查"));
+  const chips = el("div",{class:"toolbar"}, el("span",{style:"color:var(--sub);font-size:13px"},"模拟身份的密级："),
+    ...Object.keys(CLEAR).map(k=>el("button",{class:"chip"+(k===clr?" on":""),type:"button",
+      title:"一个非设计者、另开会话的 Agent，最高可读 "+k, onclick:()=>{ if (input.value.trim()) go(k); else location.hash="/inspect/"+k; }}, CLEAR[k])));
+  const head = [el("h1",null,"记忆显微镜"),
+    el("p",{class:"lead"},"看一句话会让 Agent 想起哪些记忆、每条能不能直接用，以及换成权限更低的 Agent 时哪些会被挡掉。"), form, chips];
+  if (!q){ setMain(...head, el("div",{class:"empty"}, el("div",{class:"big"},"⌖"), "输入一句话开始检查。")); input.focus(); return; }
+  setMain(...head, skeleton(3));
+  const j = await get("/api/inspect?k=50&clearance="+encodeURIComponent(clr)+"&q="+encodeURIComponent(q));
+  if (!j.ok) return setMain(...head, errBox(j));
+  const n = j.counts||{};
+  const strip = el("div",{class:"strip"},
+    el("span",null,"命中",el("b",null,j.total)), el("span",null,"可用",el("b",null,n.ACCEPT||0)),
+    el("span",null,"待确认",el("b",null,n.DEFER||0)), el("span",null,"不适用",el("b",null,n.REJECT||0)),
+    el("span",null,"盲区",el("b",null,n.BLINDSPOT||0)), el("span",null,CLEAR[clr]+"身份看不到",el("b",null,n.hidden||0)),
+    j.meta && j.meta.scanned != null ? el("span",null,"扫描候选",el("b",null,j.meta.scanned)) : null);
+  const why = c => el("div",{class:"why"},
+    el("div",null,"资格：", (QUAL[(c.qualification||{}).state]||"未判定")+(c.qualification&&c.qualification.reason?" —— "+c.qualification.reason:"")),
+    c.sim_visible ? el("div",{class:"yes"},"✓ "+CLEAR[clr]+"身份看得到")
+      : el("div",{class:"no"},"✕ "+CLEAR[clr]+"身份看不到："+(c.hidden_reason||"原因未知")));
+  selIdx = -1;
+  setMain(...head, strip,
+    j.total ? el("div",{class:"list"}, j.items.map(c=>card(c, why(c))))
+      : el("div",{class:"empty"}, el("div",{class:"big"},"🔍"), "这句话没有让 Agent 想起任何记忆。"),
+    el("p",{class:"lead",style:"margin-top:14px;font-size:12px"}, j.note||""));
+  if (j.total) select(0);
+}
+async function relatedSec(id){
+  const box = el("div",{class:"sec"}, el("h3",null,"关联记忆"), el("div",{class:"lead",style:"margin:0"},"加载中…"));
+  get("/api/related?id="+encodeURIComponent(id)).then(j=>{
+    if (drawerId !== id) return;
+    if (!j.ok) return box.replaceChildren(el("h3",null,"关联记忆"), errBox(j));
+    const any = j.tiers.some(t=>t.total);
+    box.replaceChildren(...[el("h3",null,"关联记忆"), any ? null : el("div",{class:"lead",style:"margin:0"},"没有找到相关的记忆。"),
+      ...j.tiers.filter(t=>t.total).map(t=>el("div",{class:"ring "+t.key},
+        el("div",{class:"rh"}, el("i"), t.label, el("span",{class:"count",style:"margin-left:auto;color:var(--faint);font-weight:400"}, t.total+" 条")),
+        el("div",{class:"rule"}, t.rule),
+        ...t.items.map(c=>el("button",{class:"ri",onclick:()=>openNode(c.id)},
+          el("span",{class:"badge b-layer","data-ly":c.layer||null,style:"margin-right:6px"}, LAYER[c.layer]||c.layer||"?"),
+          c.snippet||c.id, el("small",null,(c.why||[]).join("；")+" · "+c.id))),
+        t.truncated ? el("div",{class:"rule"},"只列出前 "+t.items.length+" 条") : null))].filter(Boolean));
+  });
+  return box;
+}
+
 // ---- 详情抽屉 ----
 let drawerId = null;
 function kv(rows){ return el("div",{class:"kv"}, rows.filter(r=>r[1]!=null&&r[1]!==""&&!(Array.isArray(r[1])&&!r[1].length))
   .flatMap(([k,v])=>[el("div",{class:"k"},k), el("div",{class:"v"}, v instanceof Node ? v : String(v))])); }
 function nodeLinks(arr, key){
-  const xs = (arr||[]).map(x => typeof x === "string" ? x : (x && (x[key]||x.to||x.id||x.from)) || JSON.stringify(x));
+  const xs = (arr||[]).map(x => typeof x === "string" ? x : (x && (x[key]||x.target||x.to||x.id||x.from)) || JSON.stringify(x));
   if (!xs.length) return null;
   return el("div",null, xs.map(id=>el("div",null, el("span",{class:"link",onclick:()=>openNode(id)}, id))));
 }
@@ -401,6 +503,7 @@ async function openNode(id){
       ["它引用", nodeLinks(s.refers_to && s.refers_to.items, "to")],
       ["被引用", nodeLinks(s.referenced_by && s.referenced_by.items, "from")]]),
       !(s.derived_from||((s.refers_to||{}).total)||((s.referenced_by||{}).total)) ? el("div",{class:"lead",style:"margin:0"},"没有记录到来源或引用关系。") : null),
+    await relatedSec(id),
     el("div",{class:"sec"}, el("h3",null,"两存 / 备择"),
       alt.conflicts_total ? el("div",null, el("p",null,"与 "+alt.conflicts_total+" 条记忆在同一条件下说法不同："),
         nodeLinks((alt.conflicts||[]).map(c=>c.id||c.node_id||c))) :
@@ -427,6 +530,7 @@ function route(){
   if (v === "search" && arg) return viewSearch(h.slice("/search/".length));
   if (v === "browse") return viewBrowse(arg || null);
   if (v === "node" && arg){ viewBrowse(null); return openNode(h.slice("/node/".length)); }
+  if (v === "inspect"){ const rest = h.split("/").slice(2); return viewInspect(rest.slice(1).join("/"), rest[0]); }
   if (v === "timeline") return viewTimeline();
   if (v === "review") return viewReview();
   return viewHome();
@@ -458,9 +562,12 @@ document.addEventListener("keydown", e=>{
   else if (e.key === "Enter" && selIdx >= 0 && items()[selIdx]){ items()[selIdx].click(); }
   else if (e.key === "?"){ $("#help").classList.add("open"); }
   else if (e.key === "g"){ location.hash = "/"; } else if (e.key === "b"){ location.hash = "/browse"; }
-  else if (e.key === "t"){ location.hash = "/timeline"; }
+  else if (e.key === "t"){ location.hash = "/timeline"; } else if (e.key === "i"){ location.hash = "/inspect"; }
 });
 loadOverview().then(route);
+// 状态灯：每 20 秒确认一次服务还在（页面在后台时不打扰）。
+setInterval(()=>{ if (document.visibilityState === "visible") get("/api/overview").then(j=>{ if (j.ok){
+  $("#c-total").textContent = j.total; $("#c-review").textContent = j.review_pending ?? ""; } }); }, 20000);
 </script>
 </body>
 </html>

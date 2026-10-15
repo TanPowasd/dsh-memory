@@ -9,6 +9,8 @@
   GET /api/node?id=
   GET /api/timeline?limit=
   GET /api/review
+  GET /api/related?id=          → 关联记忆三圈
+  GET /api/inspect?q=&clearance=&k=  → 记忆显微镜
 其它方法一律 405；未知路径 404。
 
 本机防护（白箱条件）：
@@ -117,6 +119,10 @@ class _Handler(BaseHTTPRequestHandler):
             "/api/node": lambda: api.node(self.cg, qs.get("id")),
             "/api/timeline": lambda: api.timeline(self.cg, qs.get("limit", 100)),
             "/api/review": lambda: api.review(self.cg),
+            "/api/related": lambda: api.related(self.cg, qs.get("id")),
+            "/api/inspect": lambda: api.inspect(self.cg, qs.get("q"),
+                                                qs.get("clearance", "internal"),
+                                                qs.get("k", 20)),
         }
         fn = routes.get(u.path)
         if fn is None:

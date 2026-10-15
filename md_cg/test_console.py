@@ -15,6 +15,11 @@
   G7 静态禁写：api.py / server.py 源码不调用任何写接口名。
   G8 自动找库：MDCG_ROOT 指向非记忆库时回落 ~/.lingshu/memory；都不是则返回 None
      并列出全部已找位置；显式 --root 原样采用不猜。
+  G9 关联三圈：内圈=血缘（derived_from 双向）、中圈=引用（edges 双向）、外圈=共享标签；
+     跨圈去重；不可见节点既不能当起点（node_not_found）也不出现在任何一圈。
+  G10 显微镜：模拟低密级身份时命中被标「看不到」并给出原因；高密级时可见；非法密级拒绝；
+     调用前后控制台真身份与真索引条目不变（模拟不串到真身份上）。
+  G11 前端资格四态映射与 md_cg.mdcg.STATE_* 同名（防「全显示成英文/全标黄」）。
 
 跑法（仓库根）：
   python -X utf8 -m md_cg.test_console            # 守卫
@@ -69,6 +74,27 @@ def _seed(root):
     return root
 
 
+# 生效条件：在 root 下用设计者身份写关联夹具——base（习惯）、child（derived_from=base，edges→ref，习惯）、ref、peer（习惯，无关系）、sec_peer（习惯，secret），返回 root。
+def _seed_rel(root):
+    p = Principal(actor="seed", clearance="secret", can_write=True, can_admin=True,
+                  role="designer", auth_mode="local-cli", session="seed-sess")
+    cg = MdCGSecure(root, principal=p, autoflush=1)
+    cg.add("base", "每周二早上跑步。", layer="contextual", tags=["习惯"])
+    cg.add("ref", "高考目标物理 90。", layer="knowledge", tags=["目标"])
+    cg.add("child", "十月起每周跑三次。", layer="contextual", tags=["习惯"],
+           derived_from="base", edges=[{"target": "ref", "relation_type": "兼顾"}])
+    cg.add("peer", "睡前拉伸十分钟。", layer="contextual", tags=["习惯"])
+    cg.add("sec_peer", "机密习惯。", layer="contextual", tags=["习惯"], sensitivity="secret")
+    cg.close()
+    return root
+
+
+# 生效条件：读 console/index.html 源码（单独成函数，供 M11 变异替换）。
+def _html():
+    with open(os.path.join(_HERE, "console", "index.html"), encoding="utf-8") as f:
+        return f.read()
+
+
 # 生效条件：遍历 root 下全部文件，返回 {相对路径: sha256}。
 def _snapshot(root):
     out = {}
@@ -112,6 +138,8 @@ def run_guards():
         api.node(cg, "pref_editor")
         api.node(cg, "no_such_node")
         api.timeline(cg)
+        api.related(cg, "habit_run")
+        api.inspect(cg, "跑步", "public")
         rv = api.review(cg)
         srv = server.make_server(cg, port=0)
         th = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -120,7 +148,8 @@ def run_guards():
         codes = {}
         for path in ("/", "/api/overview", "/api/search?q=%E8%B7%91%E6%AD%A5",
                      "/api/browse", "/api/node?id=habit_run", "/api/timeline",
-                     "/api/review"):
+                     "/api/review", "/api/related?id=habit_run",
+                     "/api/inspect?q=%E8%B7%91%E6%AD%A5&clearance=internal"):
             codes[path] = _req(port, path)[0]
         after = _snapshot(root)
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
@@ -216,13 +245,60 @@ def run_guards():
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
+
+        # ---- G9 关联三圈 ----
+        print("== G9 关联三圈 ==")
+        rroot = _seed_rel(os.path.join(tmp, "rel"))
+        cgr, _ = api.open_cg(rroot)
+
+        def _ids(res):
+            return {t["key"]: {c["id"] for c in t["items"]} for t in res.get("tiers", [])}
+        rb, rc = api.related(cgr, "base"), api.related(cgr, "child")
+        tb, tc = _ids(rb), _ids(rc)
+        check("G9.1 base：内圈={child}（它派生自本条），外圈含 peer 且不含 child（跨圈去重）",
+              tb.get("inner") == {"child"} and "peer" in tb.get("outer", set())
+              and "child" not in tb.get("outer", set())
+              and rb["tiers"][0]["items"][0]["why"] == ["它派生自本条"], str(tb))
+        check("G9.2 child：内圈={base}，中圈={ref}，外圈不含 base",
+              tc.get("inner") == {"base"} and tc.get("mid") == {"ref"}
+              and "base" not in tc.get("outer", set()), str(tc))
+        check("G9.3 设计者口径外圈含 secret 同标签节点", "sec_peer" in tb.get("outer", set()), str(tb))
+        cgr.close()
+        cgri, _ = api.open_cg(rroot, clearance="internal")
+        tbi = _ids(api.related(cgri, "base"))
+        check("G9.4 internal 口径：secret 节点不进任何一圈",
+              all("sec_peer" not in v for v in tbi.values()), str(tbi))
+        nf, nn = api.related(cgri, "sec_peer"), api.related(cgri, "no_such")
+        check("G9.5 不可见起点与不存在同形", nf.get("error") == nn.get("error") == "node_not_found"
+              and set(nf) == set(nn))
+        cgri.close()
+
+        # ---- G10 显微镜 ----
+        print("== G10 显微镜 ==")
+        cgm, _ = api.open_cg(root)
+        snap_e = dict(cgm.index["nodes"]["habit_run"])
+        snap_p = (cgm.principal.clearance, cgm.principal.can_admin, cgm.principal.session)
+        lo = api.inspect(cgm, "跑步", "public")
+        hit = {c["id"]: c for c in lo.get("items", [])}.get("habit_run") or {}
+        check("G10.1 public 身份：habit_run 被标看不到且原因为密级高于身份",
+              hit.get("sim_visible") is False and "高于" in (hit.get("hidden_reason") or "")
+              and lo.get("counts", {}).get("hidden", 0) >= 1, str(hit))
+        hi = api.inspect(cgm, "跑步", "secret")
+        hit2 = {c["id"]: c for c in hi.get("items", [])}.get("habit_run") or {}
+        check("G10.2 secret 身份：internal 节点可见", hit2.get("sim_visible") is True, str(hit2))
+        check("G10.3 非法密级 → bad_clearance", api.inspect(cgm, "跑步", "root").get("error") == "bad_clearance")
+        check("G10.4 真身份与真索引条目不变",
+              (cgm.principal.clearance, cgm.principal.can_admin, cgm.principal.session) == snap_p
+              and cgm.index["nodes"]["habit_run"] == snap_e)
+        sim = Principal(actor="x", clearance="secret", can_write=False, can_admin=False)
+        check("G10.5 private 被挡的原因为会话绑定", "会话绑定" in api._hidden_reason("private", sim))
+        cgm.close()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
     # ---- G6 / G7 静态 ----
     print("== G6 前端渲染纪律 / G7 静态禁写 ==")
-    with open(os.path.join(_HERE, "console", "index.html"), encoding="utf-8") as f:
-        html = f.read()
+    html = _html()
     bad = [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write")
            if w in html]
     check("G6.1 index.html 无 HTML 注入面", not bad, str(bad))
@@ -234,6 +310,11 @@ def run_guards():
             src = f.read()
         hits = [w for w in write_names if re.search(w, src)]
         check("G7 %s 无写接口调用" % mod, not hits, str(hits))
+    from md_cg import mdcg as _m
+    mq = re.search(r"const QUAL = \{([^}]*)\}", html)
+    keys = set(re.findall(r"([A-Z_]+):", mq.group(1))) if mq else set()
+    want = {_m.STATE_ACCEPT, _m.STATE_DEFER, _m.STATE_REJECT, _m.STATE_BLINDSPOT}
+    check("G11 前端资格四态键 = mdcg.STATE_*", keys == want, "前端 %s / 库 %s" % (sorted(keys), sorted(want)))
     print("\n结果：%d 通过 / %d 失败" % (PASS, FAIL))
     return FAIL
 
@@ -245,6 +326,37 @@ def _mutations():
     orig_host = server.host_allowed
     orig_open = api.open_cg
     orig_resolve = api.resolve_root
+    orig_related = api.related
+    orig_inspect = api.inspect
+    orig_vis = api._visible_entries
+    orig_html = _html
+
+    def m7_no_dedupe(cg, node_id, cap=8):             # G9：跨圈不去重（内圈也塞进外圈）
+        r = orig_related(cg, node_id, cap)
+        if r.get("ok"):
+            r["tiers"][2]["items"] = r["tiers"][2]["items"] + r["tiers"][0]["items"]
+        return r
+
+    def m8_related_all(cg, node_id, cap=8):           # G9：关联面不判可见
+        api._visible_entries = lambda c: list((c.index or {}).get("nodes", {}).items())
+        try:
+            return orig_related(cg, node_id, cap)
+        finally:
+            api._visible_entries = orig_vis
+
+    def m9_sim_ignored(cg, q, clearance="internal", k=20):   # G10：模拟身份失效，全标可见
+        r = orig_inspect(cg, q, clearance, k)
+        for c in r.get("items", []):
+            c["sim_visible"], c["hidden_reason"] = True, None
+        return r
+
+    def m10_swap_identity(cg, q, clearance="internal", k=20):  # G10：在真身份上改密级模拟
+        if clearance in api.SIM_CLEARANCES:
+            cg.principal.clearance = clearance
+        return orig_inspect(cg, q, clearance, k)
+
+    def m11_old_qual():                                  # G11：前端回到旧键 USABLE/CONFLICT
+        return orig_html().replace('ACCEPT:"可用"', 'USABLE:"可用"')
 
     def m6_no_probe(explicit=None, home=None):          # G8：不判是否记忆库，直接取第一候选
         r, tried = orig_resolve(explicit, home)
@@ -277,6 +389,11 @@ def _mutations():
         ("M4 open_cg 建目录", api, "open_cg", m4_mkdir),
         ("M5 忽略 --clearance", api, "make_principal", m5_clearance_ignored),
         ("M6 找库不判记忆库", api, "resolve_root", m6_no_probe),
+        ("M7 关联跨圈不去重", api, "related", m7_no_dedupe),
+        ("M8 关联不判可见", api, "related", m8_related_all),
+        ("M9 显微镜模拟身份失效", api, "inspect", m9_sim_ignored),
+        ("M10 显微镜改真身份", api, "inspect", m10_swap_identity),
+        ("M11 前端资格键回旧名", sys.modules[__name__], "_html", m11_old_qual),
     ]
 
 
