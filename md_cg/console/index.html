@@ -322,7 +322,7 @@ function card(c, extra){
     el("span",{title:fmtTime(c.created_at)}, ago(c.created_at)),
     ...(c.tags||[]).slice(0,6).map(t=>el("span",{class:"tag"},t)));
   return el("button",{class:"item","data-id":c.id,"data-ly":c.layer||null,onclick:()=>openNode(c.id)}, top,
-    el("div",{class:"snip"}, c.unreadable ? "（读不到正文：文件缺失或无权解密）" : (c.snippet || "（空）")), meta, extra||null);
+    el("div",{class:"snip"}, c.locked ? "（已加密：控制台默认不解密，只显示元数据）" : c.unreadable ? "（读不到正文：文件缺失或无权解密）" : (c.snippet || "（空）")), meta, extra||null);
 }
 
 // ---- 视图 ----
@@ -506,7 +506,8 @@ async function openNode(id){
   const a = j.audit || {}, p = a.present || {}, s = a.sources || {}, alt = a.alternatives || {}, bl = a.blindspots || {}, h = a.history || {};
   const validity = Array.isArray(p.validity) ? p.validity[0] : p.validity;
   b.replaceChildren(...[
-    el("div",{class:"content"}, j.content || "（空）"),
+    j.locked ? el("div",{class:"content"}, "这条是加密记忆，控制台没有解密（"+(j.locked_reason==="console_no_decrypt"?"默认不解密":"解不开："+(j.locked_reason||"未知"))+"）。出处、标签等元数据照常显示；需要看正文时，用 --decrypt-as 指定写入它的身份重新打开控制台。")
+             : el("div",{class:"content"}, j.content || "（空）"),
     el("div",{class:"sec"}, el("h3",null,"现值"), kv([
       ["层", LAYER[p.layer]||p.layer], ["验证", verBadge(p.verification_state)], ["生命状态", LIFE[p.lifecycle_state]||p.lifecycle_state],
       ["时效", {valid:"有效",expired:"已过期",pending:"未生效",unknown:"未知"}[validity]||validity],

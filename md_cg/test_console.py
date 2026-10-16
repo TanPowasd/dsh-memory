@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import http.client
 import os
 import re
@@ -297,6 +298,7 @@ def run_guards():
         shutil.rmtree(tmp, ignore_errors=True)
 
     # ---- G6 / G7 静态 ----
+    run_g12()
     print("== G6 前端渲染纪律 / G7 静态禁写 ==")
     html = _html()
     bad = [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write")
@@ -304,7 +306,8 @@ def run_guards():
     check("G6.1 index.html 无 HTML 注入面", not bad, str(bad))
     write_names = (r"\.add\(", r"\.propose\(", r"\.forget", r"review_decide", r"\.set_state\(",
                    r"\.set_verification\(", r"\.update_tags\(", r"\.remember_event\(",
-                   r"\.flush\(", r"record=True", r"\.append_edge\(", r"clear_recent")
+                   r"\.flush\(", r"record=True", r"\.append_edge\(", r"clear_recent",
+                   r"provision_dek\(", r"rotate_dek\(", r"load_master_key\(\)")
     for mod in ("api.py", "server.py"):
         with open(os.path.join(_HERE, "console", mod), encoding="utf-8") as f:
             src = f.read()
@@ -319,6 +322,67 @@ def run_guards():
     return FAIL
 
 
+# 生效条件：对 cg 调一遍全部数据面函数（两轮，模拟两次完整浏览），返回最后一轮 (browse 卡片 {id: card}, {id: node 结果})。
+def _exercise(cg, ids):
+    for _ in range(2):
+        api.overview(cg)
+        cards = {c["id"]: c for c in api.browse(cg)["items"]}
+        api.timeline(cg); api.review(cg); api.search(cg, "跑步")
+        api.inspect(cg, "跑步", "public"); api.related(cg, ids[0])
+        nodes = {i: api.node(cg, i) for i in ids}
+    return cards, nodes
+
+
+# 生效条件：临时 HOME（改 crypto.MASTER_FILE、清 MDCG_MASTER_KEY）下由写入方 agentA 写 internal + private 两条；分 正常主密钥 / 主密钥被重新生成 / 无主密钥 三场景，各以缺省（不解密）、--decrypt-as agentA、--decrypt-as agentB 打开控制台跑全部数据面；断言库根与 HOME 逐字节不变（含 _keys.json/_crypto.jsonl，HOME 不新增主密钥），并断言正文可读性与「已加密」口径。
+def run_g12():
+    from md_cg import crypto
+    print("== G12 加密库只读：不签发密钥 / 不生成主密钥 / 不落解密失败审计；已加密如实标出 ==")
+    saved_mf, saved_env = crypto.MASTER_FILE, os.environ.pop(crypto.MASTER_ENV, None)
+    tmp = tempfile.mkdtemp(prefix="console_g12_")
+    try:
+        for sc in ("normal", "mismatch", "nokey"):
+            home = os.path.join(tmp, sc, "home"); root = os.path.join(tmp, sc, "mem")
+            os.makedirs(home)
+            crypto.MASTER_FILE = os.path.join(home, ".mdcg", "master.key")
+            w = MdCGSecure(root, principal=Principal(actor="agentA", clearance="secret",
+                           can_write=True, can_admin=True, role="designer",
+                           auth_mode="local-cli", session="a1"), autoflush=1)
+            w.add("pub_a", "跑步笔记", layer="contextual", tags=["习惯"])
+            w.add("priv_a", "私密日记正文", layer="self", tags=["习惯"], sensitivity="private")
+            w.close()
+            if sc == "mismatch":
+                os.remove(crypto.MASTER_FILE); crypto.load_master_key()
+            elif sc == "nokey":
+                os.remove(crypto.MASTER_FILE)
+            for who in (None, "agentA", "agentB"):
+                tag = "%s/%s" % (sc, who or "缺省")
+                r0, h0 = _snapshot(root), _snapshot(home)
+                cg, err = api.open_cg(root, decrypt_as=who, env={})
+                cards, nodes = _exercise(cg, ["pub_a", "priv_a"])
+                r1, h1 = _snapshot(root), _snapshot(home)
+                diff = sorted(k for k in set(r0) | set(r1) if r0.get(k) != r1.get(k))
+                hdiff = sorted(k for k in set(h0) | set(h1) if h0.get(k) != h1.get(k))
+                check("G12 %s 库根逐字节不变" % tag, not diff, str(diff))
+                check("G12 %s HOME 不新增/改动" % tag, not hdiff, str(hdiff))
+                readable = sc == "normal" and who == "agentA"
+                pn = nodes["priv_a"]
+                shown = "私密日记正文" in json.dumps(pn, ensure_ascii=False)
+                check("G12 %s 私密正文%s" % (tag, "可读" if readable else "不外泄"),
+                      shown == readable, str(pn.get("content"))[:40])
+                if not readable:
+                    check("G12 %s 详情如实标「已加密」而非找不到" % tag,
+                          pn.get("ok") is True and pn.get("locked") is True, str(pn)[:120])
+                    check("G12 %s 卡片 locked" % tag,
+                          cards.get("priv_a", {}).get("locked") is True, str(cards.get("priv_a")))
+                check("G12 %s 普通正文照常" % tag,
+                      (nodes["pub_a"].get("content") or "").strip() == "跑步笔记", str(nodes["pub_a"])[:80])
+    finally:
+        crypto.MASTER_FILE = saved_mf
+        if saved_env is not None:
+            os.environ[crypto.MASTER_ENV] = saved_env
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---- 定点变异：每条都须让守卫点红 ----
 def _mutations():
     orig_search = api.search
@@ -328,6 +392,25 @@ def _mutations():
     orig_resolve = api.resolve_root
     orig_related = api.related
     orig_inspect = api.inspect
+    orig_cls = api._secure_cls
+    orig_node = api.node
+
+    def m12_plain_secure():                              # G12：退回直接构造 MdCGSecure
+        class Plain(MdCGSecure):
+            def __init__(self, root, decrypt_as=None, **kw):
+                super().__init__(root, **kw)
+        return Plain
+
+    def m13_audit_locked():                              # G12：缺密钥仍走库解密（落 read_locked）
+        base = orig_cls()
+        class Loud(base):
+            def _open_content(self, node_id, fm, content):
+                return MdCGSecure._open_content(self, node_id, fm, content)
+        return Loud
+
+    def m14_node_not_found(cg, node_id, cap=8):          # G12：已加密又报成找不到
+        r = orig_node(cg, node_id, cap)
+        return {"ok": False, "error": "node_not_found"} if r.get("locked") else r
     orig_vis = api._visible_entries
     orig_html = _html
 
@@ -394,6 +477,9 @@ def _mutations():
         ("M9 显微镜模拟身份失效", api, "inspect", m9_sim_ignored),
         ("M10 显微镜改真身份", api, "inspect", m10_swap_identity),
         ("M11 前端资格键回旧名", sys.modules[__name__], "_html", m11_old_qual),
+        ("M12 退回直接构造 MdCGSecure", api, "_secure_cls", m12_plain_secure),
+        ("M13 缺密钥仍尝试解密", api, "_secure_cls", m13_audit_locked),
+        ("M14 已加密报成找不到", api, "node", m14_node_not_found),
     ]
 
 

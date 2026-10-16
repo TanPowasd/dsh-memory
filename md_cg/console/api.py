@@ -23,6 +23,59 @@ SNIPPET_MAX = 160
 PAGE_MAX = 200
 #: 本机控制台缺省可读密级（needs-owner-decision：见 PR 说明「身份口径」）。
 DEFAULT_CLEARANCE = "secret"
+#: 显式开启解密时，控制台借用的写入方身份（actor）。缺省不设 = 不解密。
+#: needs-owner-decision：是否允许控制台显示私密明文、变量名口径。
+DECRYPT_ENV = "MDCG_CONSOLE_DECRYPT_AS"
+
+_SECURE_CLS = None
+
+
+# 生效条件：首次调用时构造并缓存 MdCGSecure 的控制台只读子类 ConsoleSecure——
+#   · _init_crypto：decrypt_as 为空 → kek=dek=None、_crypto_error="console_no_decrypt"（不读主密钥、不签发信封）；
+#     非空 → crypto.load_master_key(create=False)（缺失不生成）且 crypto.has_envelope 为真时 crypto.unwrap_dek 取已有 DEK（只读 _keys.json），
+#     否则 dek=None 并把原因写入 _crypto_error；CryptoError/OSError 同样 dek=None 记原因。全程不调 provision_dek。
+#   · _open_content：dek 为空且正文为密文 → 直接返回 None（未尝试解密，故不落 read_locked 审计）；其余交回 MdCGSecure._open_content（含密级闸、读可见性闸与审计）。
+def _secure_cls():
+    global _SECURE_CLS
+    if _SECURE_CLS is not None:
+        return _SECURE_CLS
+    from ..mdcos import MdCGSecure
+    from .. import crypto
+
+    class ConsoleSecure(MdCGSecure):
+        """控制台只读身份：不签发密钥、不生成主密钥；缺省不解密。"""
+
+        def __init__(self, root, decrypt_as=None, **kw):
+            self._decrypt_as = (decrypt_as or "").strip() or None
+            super().__init__(root, **kw)
+
+        def _init_crypto(self, master_key=None):
+            self.kek = self.dek = None
+            if not self._decrypt_as:
+                self._crypto_error = "console_no_decrypt"
+                return
+            p = self.principal
+            try:
+                kek = crypto.load_master_key(create=False)
+                if not kek:
+                    self._crypto_error = "no_master_key"
+                elif not crypto.has_envelope(self.root, p.tenant, p.actor):
+                    self._crypto_error = "no_envelope"
+                else:
+                    self.dek = crypto.unwrap_dek(self.root, kek, p.tenant, p.actor,
+                                                 p.clearance)
+                    self.kek, self._crypto_error = kek, None
+            except (crypto.CryptoError, OSError) as e:
+                self.kek = self.dek = None
+                self._crypto_error = str(e)
+
+        def _open_content(self, node_id, fm, content):
+            if not self.dek and content is not None and crypto.is_encrypted(content):
+                return None
+            return super()._open_content(node_id, fm, content)
+
+    _SECURE_CLS = ConsoleSecure
+    return _SECURE_CLS
 
 
 # 生效条件：env 缺省取 os.environ；MDCG_TOKEN 非空 → tokens.verify_token 校验（失败抛 TokenError，调用方拒启），成功后把 can_write/can_admin 之外的身份原样保留、can_write 强制 False；无令牌 → 构造本机只读身份 Principal(actor="console-ui", clearance=clearance 或 DEFAULT_CLEARANCE, can_write=False, can_admin=True, role="designer", auth_mode="local-ui", session="console")；两种路径返回的身份 can_write 恒为 False。
@@ -74,8 +127,8 @@ def resolve_root(explicit=None, home=None):
     return None, tried
 
 
-# 生效条件：root 为空串/None → 返回 (None, {"ok":False,"error":"no_root"})；root 不是已存在目录 → (None, {"error":"root_missing"})（**不创建目录**：控制台不得因打开而凭空建库）；目录存在但无 _index.json 且无任何层目录 → (None, {"error":"not_a_memory_root"})；其余以 make_principal(clearance) 构造 MdCGSecure(root, autoflush=1) 返回 (cg, None)。
-def open_cg(root, clearance=None, env=None):
+# 生效条件：root 为空串/None → 返回 (None, {"ok":False,"error":"no_root"})；root 不是已存在目录 → (None, {"error":"root_missing"})（**不创建目录**：控制台不得因打开而凭空建库）；目录存在但无 _index.json 且无任何层目录 → (None, {"error":"not_a_memory_root"})；其余以 make_principal(clearance, env) 为身份； decrypt_as 取入参或 env[DECRYPT_ENV]（去空白，空即 None），非空则把身份 actor 换成它，用 _secure_cls()(root, autoflush=1) 构造（不签发密钥、不生成主密钥），返回 (cg, None)。
+def open_cg(root, clearance=None, env=None, decrypt_as=None):
     if not root:
         return None, {"ok": False, "error": "no_root",
                       "hint": "没有找到记忆库位置。请设置环境变量 MDCG_ROOT，"
@@ -89,8 +142,12 @@ def open_cg(root, clearance=None, env=None):
         return None, {"ok": False, "error": "not_a_memory_root", "root": root,
                       "hint": "这个目录看起来不是灵枢记忆库（没有 _index.json 也没有层目录）："
                               "%s" % root}
-    from ..mdcos import MdCGSecure
-    cg = MdCGSecure(root, principal=make_principal(clearance, env), autoflush=1)
+    env = os.environ if env is None else env
+    decrypt_as = (decrypt_as or env.get(DECRYPT_ENV) or "").strip() or None
+    p = make_principal(clearance, env)
+    if decrypt_as:
+        p.actor = decrypt_as
+    cg = _secure_cls()(root, decrypt_as=decrypt_as, principal=p, autoflush=1)
     return cg, None
 
 
@@ -114,7 +171,7 @@ def _snip(text, n=SNIPPET_MAX):
     return s if len(s) <= n else s[:n] + "…"
 
 
-# 生效条件：rec 为 cg.get 返回的 dict（或 None）；返回卡片字典 {id, layer, tags, created_at, lifecycle_state, verification_state, sensitivity, snippet}；rec 为 None 时 snippet 为空且 unreadable=True（如实标出读不到，不编造）。
+# 生效条件：rec 为 cg.get 返回的 dict（或 None）；返回卡片字典 {id, layer, tags, created_at, lifecycle_state, verification_state, sensitivity, snippet}；rec 为 None 时 snippet 为空且 unreadable=True（如实标出读不到，不编造）。；locked = rec 为 None 且索引条目密级属加密档（控制台未解开的密文）。
 def _card(nid, entry, rec):
     fm = (rec or {}).get("frontmatter") or {}
     e = entry or {}
@@ -129,7 +186,14 @@ def _card(nid, entry, rec):
         "importance": fm.get("importance", e.get("importance")),
         "snippet": _snip((rec or {}).get("content")),
         "unreadable": rec is None,
+        "locked": rec is None and _is_encrypted_level(e.get("sensitivity")),
     }
+
+
+# 生效条件：sensitivity ∈ crypto.ENCRYPTED_LEVELS（private/secret：正文必为密文落盘）→ True。
+def _is_encrypted_level(sensitivity):
+    from .. import crypto
+    return sensitivity in crypto.ENCRYPTED_LEVELS
 
 
 # 生效条件：now 缺省取 time.time()；统计可见条目的总数、按 layer / lifecycle_state / verification_state 计数、created_at 落在近 7 天内的数量；待复核数取 review(cg)["total"]（失败记 None 并带 review_error）；近期事件数取 recent_events(limit=0) 长度；返回 ok=True 的概览字典，含 root 与身份摘要（actor/clearance/can_write）。
@@ -223,20 +287,35 @@ def browse(cg, layer=None, offset=0, limit=50):
             "items": [_card(n, e, cg.get(n)) for n, e in page]}
 
 
-# 生效条件：node_id 去空白为空或 cg.get 返回 None（不存在或不可见，二者对调用方同形，不泄露存在性）→ {"ok":False,"error":"node_not_found"}；否则返回 {ok, id, content(全文), frontmatter, audit=auditview.build(cg, id, cap)}，audit 抛异常时 audit={"ok":False,"error":<类型: 消息>} 而非吞掉。
+# 生效条件：node_id 去空白为空或 cg.get 返回 None（不存在或不可见，二者对调用方同形，不泄露存在性）→ {"ok":False,"error":"node_not_found"}；否则返回 {ok, id, content(全文), frontmatter, audit=auditview.build(cg, id, cap)}，audit 抛异常时 audit={"ok":False,"error":<类型: 消息>} 而非吞掉。；例外：cg.get 为 None 但索引条目对当前身份可见（_readable_guard）且密级属加密档 → 返回 ok=True、locked=True、content=""、frontmatter=索引条目副本、locked_reason=cg._crypto_error（如实说「已加密」，不说「找不到」）。
 def node(cg, node_id, cap=8):
     nid = str(node_id or "").strip()
     rec = cg.get(nid) if nid else None
+    locked = False
     if not rec:
-        return {"ok": False, "error": "node_not_found", "id": nid,
-                "hint": "找不到这条记忆，或当前身份看不到它。"}
+        e = ((cg.index or {}).get("nodes") or {}).get(nid) if nid else None
+        try:
+            from ..auditview import _readable_guard
+            vis = bool(e) and _readable_guard(cg)(e)
+        except Exception:                                    # noqa: BLE001
+            vis = False                                      # 判定异常 = 不可见
+        if not (vis and _is_encrypted_level(e.get("sensitivity"))):
+            return {"ok": False, "error": "node_not_found", "id": nid,
+                    "hint": "找不到这条记忆，或当前身份看不到它。"}
+        # 可见但正文是控制台未解开的密文：如实标「已加密」，不说「找不到」
+        locked = True
+        rec = {"content": "", "frontmatter": dict(e)}
     from .. import auditview
     try:
         audit = auditview.build(cg, nid, cap=cap)
     except Exception as exc:                                 # noqa: BLE001
         audit = {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
-    return {"ok": True, "id": nid, "content": rec.get("content") or "",
-            "frontmatter": rec.get("frontmatter") or {}, "audit": audit}
+    out = {"ok": True, "id": nid, "content": rec.get("content") or "",
+           "frontmatter": rec.get("frontmatter") or {}, "audit": audit}
+    if locked:
+        out["locked"] = True
+        out["locked_reason"] = getattr(cg, "_crypto_error", None)
+    return out
 
 
 # 生效条件：limit 非数回落 100 并钳 [1, PAGE_MAX]；合并两路——cg.recent_events(limit) 的对话事件（kind="event"）与可见节点按 created_at 取最新 limit 条（kind="node"）——按时间 t 降序截 limit 条返回；recent_events 抛异常时如实带 events_error，节点路照常。

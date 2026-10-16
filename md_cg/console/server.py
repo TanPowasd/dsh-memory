@@ -170,6 +170,9 @@ def main(argv=None):
                     help="可读密级上限（缺省 %s；有 MDCG_TOKEN 时以令牌为准）"
                          % api.DEFAULT_CLEARANCE)
     ap.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    ap.add_argument("--decrypt-as", default=None, metavar="ACTOR",
+                    help="借用该写入方身份解密私密正文（只解已有密钥，不新建；"
+                         "缺省不解密，也可设环境变量 %s）" % api.DECRYPT_ENV)
     a = ap.parse_args(argv)
     root, tried = api.resolve_root(a.root)
     if not root:
@@ -180,7 +183,7 @@ def main(argv=None):
               "（就是 MCP 配置里的 MDCG_ROOT）。")
         return 2
     try:
-        cg, err = api.open_cg(root, a.clearance)
+        cg, err = api.open_cg(root, a.clearance, decrypt_as=a.decrypt_as)
     except Exception as exc:                    # noqa: BLE001  令牌/密级错误
         print("[灵枢控制台] 身份校验失败：%s: %s" % (type(exc).__name__, exc))
         return 3
@@ -193,6 +196,12 @@ def main(argv=None):
         print("[灵枢控制台] 端口 %d 被占用，已改用 %d" % (a.port, srv.server_address[1]))
     print("[灵枢控制台] 记忆库：%s" % cg.root)
     print("[灵枢控制台] 已启动（只读）：%s" % url)
+    if getattr(cg, "dek", None):
+        print("[灵枢控制台] 私密正文：按身份 %s 解密显示" % cg.principal.actor)
+    elif getattr(cg, "_decrypt_as", None):
+        print("[灵枢控制台] 私密正文：未能解密（%s），只显示元数据" % cg._crypto_error)
+    else:
+        print("[灵枢控制台] 私密正文：默认不解密，只显示元数据（需要时加 --decrypt-as）")
     print("[灵枢控制台] 关闭这个窗口或按 Ctrl+C 即可退出。")
     if not a.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
