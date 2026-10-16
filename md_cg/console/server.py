@@ -30,7 +30,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from . import api
+from . import api, splash
 
 __all__ = ["make_server", "main", "DEFAULT_PORT", "host_allowed"]
 
@@ -158,7 +158,7 @@ def _utf8_stdio():
             pass
 
 
-# 生效条件：argv 解析 --root（缺省经 api.resolve_root 依次探测 datapath.mdcg_root() 与 ~/.lingshu/memory，都不是记忆库则列出已找位置并返回 2）/ --port（缺省 DEFAULT_PORT）/ --clearance / --no-browser；open_cg 失败 → 打印中文原因与下一步并返回 2；令牌校验失败 → 返回 3；成功则打印实际地址、按需打开浏览器并 serve_forever，Ctrl+C 退出返回 0。
+# 生效条件：启动小窗见 splash.run_with_splash（--no-splash / --no-browser / MDCG_CONSOLE_SPLASH=0 关闭；弹不出来打印原因继续；点 × → 收掉已起服务并返回 0）；argv 解析 --root（缺省经 api.resolve_root 依次探测 datapath.mdcg_root() 与 ~/.lingshu/memory，都不是记忆库则列出已找位置并返回 2）/ --port（缺省 DEFAULT_PORT）/ --clearance / --no-browser；open_cg 失败 → 打印中文原因与下一步并返回 2；令牌校验失败 → 返回 3；成功则打印实际地址、按需打开浏览器并 serve_forever，Ctrl+C 退出返回 0。
 def main(argv=None):
     import argparse
     _utf8_stdio()
@@ -173,24 +173,61 @@ def main(argv=None):
     ap.add_argument("--decrypt-as", default=None, metavar="ACTOR",
                     help="借用该写入方身份解密私密正文（只解已有密钥，不新建；"
                          "缺省不解密，也可设环境变量 %s）" % api.DECRYPT_ENV)
+    ap.add_argument("--no-splash", action="store_true",
+                    help="不弹启动小窗（也可设环境变量 %s=0；--no-browser 时同样不弹）"
+                         % splash.SPLASH_ENV)
     a = ap.parse_args(argv)
-    root, tried = api.resolve_root(a.root)
-    if not root:
+
+    # 找库 → 开库 → 起服务，放进 work：有启动小窗时在后台线程跑，小窗显示进度。
+    def work(set_status):
+        set_status("正在寻找记忆库…")
+        root, tried = api.resolve_root(a.root)
+        if not root:
+            return ("no_root", tried)
+        set_status("正在打开记忆库…")
+        try:
+            cg, err = api.open_cg(root, a.clearance, decrypt_as=a.decrypt_as)
+        except Exception as exc:                # noqa: BLE001  令牌/密级错误
+            return ("auth", exc)
+        if err:
+            return ("open", err)
+        set_status("正在启动本机服务…")
+        srv = make_server(cg, a.port)
+        set_status("已就绪，正在打开浏览器…")
+        return ("ok", (cg, srv))
+
+    def on_cancel(res):                         # 点了 ×：已起的服务/已开的库收掉
+        if res and res[0] == "ok":
+            cg, srv = res[1]
+            srv.server_close()
+            try:
+                cg.close()
+            except Exception:                   # noqa: BLE001
+                pass
+
+    try:
+        res, why = splash.run_with_splash(work, enabled=not (a.no_splash or a.no_browser),
+                                          env=os.environ, on_cancel=on_cancel)
+    except splash.SplashCancelled:
+        print("[灵枢控制台] 已取消启动。")
+        return 0
+    if why and why != "已关闭":
+        print("[灵枢控制台] 启动小窗没有显示（%s），不影响使用。" % why)
+    kind, val = res
+    if kind == "no_root":
         print("[灵枢控制台] 没有找到记忆库。已经找过：")
-        for t in tried:
+        for t in val:
             print("    " + t)
         print("[灵枢控制台] 请先让接入灵枢的 Agent 记住一件事，或用 --root 指定记忆库目录"
               "（就是 MCP 配置里的 MDCG_ROOT）。")
         return 2
-    try:
-        cg, err = api.open_cg(root, a.clearance, decrypt_as=a.decrypt_as)
-    except Exception as exc:                    # noqa: BLE001  令牌/密级错误
-        print("[灵枢控制台] 身份校验失败：%s: %s" % (type(exc).__name__, exc))
+    if kind == "auth":
+        print("[灵枢控制台] 身份校验失败：%s: %s" % (type(val).__name__, val))
         return 3
-    if err:
-        print("[灵枢控制台] 打不开记忆库：" + err.get("hint", err.get("error", "")))
+    if kind == "open":
+        print("[灵枢控制台] 打不开记忆库：" + val.get("hint", val.get("error", "")))
         return 2
-    srv = make_server(cg, a.port)
+    cg, srv = val
     url = "http://127.0.0.1:%d/" % srv.server_address[1]
     if srv.server_address[1] != a.port:
         print("[灵枢控制台] 端口 %d 被占用，已改用 %d" % (a.port, srv.server_address[1]))

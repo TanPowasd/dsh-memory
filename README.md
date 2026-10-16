@@ -168,6 +168,8 @@ setx MDCG_TOKEN "mdcg1.xxxxx"     # 然后重启 DSH
 - **任意平台**：`lingshu console`（或 `npx @furongjun1999/dsh-memory console`）；
 - **源码树内**：`python -X utf8 -m md_cg.console`。
 
+启动时先弹一个启动小窗（朱砂印章「灵枢 · 记忆」，显示找库/开库进度，右上角 × 可取消），就绪后自动关闭；没装 tkinter 或没有图形桌面时不弹，窗口里会说明原因，不影响使用。不想要可加 `--no-splash` 或设 `MDCG_CONSOLE_SPLASH=0`。
+
 浏览器会打开 `http://127.0.0.1:8765/`（端口被占用时自动换一个，实际地址见窗口），可以搜索、按层浏览、看时间线和待复核队列；点开任意一条能看到它的现值、出处链、两存/备择、盲区与变迁史（与 `cg(op=audit_view)` 同一组装器），以及按血缘 / 引用 / 共享标签分成强、中、弱三圈的关联记忆。「记忆显微镜」输入一句话，列出会被想起的记忆、每条的资格四态与原因，并模拟一个更低密级、另开会话的 Agent 哪些会被挡掉、为什么。
 
 私密（private / secret）记忆默认**不解密**：控制台不读主密钥、不新建密钥，列表和详情只显示元数据并标「已加密」。需要看正文时，用写入它的身份重新打开：`python -m md_cg.console --decrypt-as <写入方 MDCG_ACTOR>`（或设环境变量 `MDCG_CONSOLE_DECRYPT_AS`）。它只解已有的密钥，不会在库里或 `~/.mdcg` 下写任何东西；不同 actor 写的私密记忆各用各的密钥，一次只能解其中一个身份的。
@@ -175,7 +177,7 @@ setx MDCG_TOKEN "mdcg1.xxxxx"     # 然后重启 DSH
 - **只读**：控制台身份恒 `can_write=False`，没有任何写入/遗忘/裁决入口；裁决仍用 `python -m md_cg.review_cli`。
 - **只听本机**：绑定 127.0.0.1，并校验 Host / Origin（防 DNS rebinding）。
 - **自动找库**：`--root` > `MDCG_ROOT` / `paths.json` > `~/.lingshu/memory`，找不到会列出找过的位置；不会替你新建目录。
-- 选项：`--root <dir>` `--port <n>` `--clearance <密级>`（缺省 `secret`；设了 `MDCG_TOKEN` 时以令牌为准）`--no-browser`。
+- 选项：`--root <dir>` `--port <n>` `--clearance <密级>`（缺省 `secret`；设了 `MDCG_TOKEN` 时以令牌为准）`--no-browser` `--no-splash`。
 
 ---
 

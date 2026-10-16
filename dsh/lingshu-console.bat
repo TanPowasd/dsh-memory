@@ -7,7 +7,8 @@ rem       （端口被占用时自动换一个，实际地址见窗口）。
 rem 指定记忆库：lingshu-console.bat --root "D:\我的记忆"
 rem 解释器：环境变量 MDCG_PYTHON（与 MCP 配置同名），缺省 python
 rem       （与 src/lib/python_path.ts 同口径，不做 PATH 扫描回退）。
-rem 控制台只读：不会修改、删除任何记忆。关闭本窗口即退出。
+rem 启动时先弹启动小窗（--no-splash 关闭）；控制台只读：不会修改、删除任何记忆。
+rem 关闭本窗口即退出。
 rem ============================================================
 chcp 65001 >nul
 setlocal

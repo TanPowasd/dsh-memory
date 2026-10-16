@@ -20,6 +20,9 @@
   G10 显微镜：模拟低密级身份时命中被标「看不到」并给出原因；高密级时可见；非法密级拒绝；
      调用前后控制台真身份与真索引条目不变（模拟不串到真身份上）。
   G11 前端资格四态映射与 md_cg.mdcg.STATE_* 同名（防「全显示成英文/全标黄」）。
+  G13 启动小窗不静默降级：关掉/没装 tkinter 时 work 照跑、结果照回、原因如实交回并由
+      server.main 打印；work 的异常原样再抛；splash.py 不读写文件、不碰记忆库；
+      有图形桌面时真弹一次并按时关闭（无桌面如实标「跳过」）。
 
 跑法（仓库根）：
   python -X utf8 -m md_cg.test_console            # 守卫
@@ -39,7 +42,7 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from md_cg.console import api, server          # noqa: E402
+from md_cg.console import api, server, splash  # noqa: E402
 from md_cg.mdcos import MdCGSecure             # noqa: E402
 from md_cg.security import AccessDenied, Principal   # noqa: E402
 
@@ -299,6 +302,7 @@ def run_guards():
 
     # ---- G6 / G7 静态 ----
     run_g12()
+    run_g13()
     print("== G6 前端渲染纪律 / G7 静态禁写 ==")
     html = _html()
     bad = [w for w in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write")
@@ -383,6 +387,78 @@ def run_g12():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# 生效条件：G13 全部断言；不依赖图形桌面（真弹窗那条在无桌面时打印「跳过」且不计数）。
+def run_g13():
+    import contextlib
+    import io
+    print("== G13 启动小窗：不静默降级 / 异常不吞 / 不碰记忆库 ==")
+    calls = []
+
+    def work(st):
+        st("x")
+        calls.append(1)
+        return "R"
+
+    r, why = splash.run_with_splash(work, enabled=False)
+    check("G13.1 关闭时 work 照跑、结果照回", (r, len(calls)) == ("R", 1), str((r, calls)))
+    check("G13.1 关闭时原因=已关闭", why == "已关闭", repr(why))
+    r, why = splash.run_with_splash(work, env={splash.SPLASH_ENV: "0"})
+    check("G13.2 %s=0 视同关闭" % splash.SPLASH_ENV, (r, why) == ("R", "已关闭"), repr(why))
+    orig_tk = splash._import_tk
+
+    def no_tk():
+        raise ImportError("No module named '_tkinter'")
+    splash._import_tk = no_tk
+    try:
+        r, why = splash.run_with_splash(work, env={})
+        check("G13.3 没装 tkinter 时结果照回", r == "R", repr(r))
+        check("G13.3 没装 tkinter 时原因如实交回", bool(why) and "tkinter" in why, repr(why))
+
+        def boom(st):
+            raise KeyError("boom")
+        try:
+            splash.run_with_splash(boom, env={})
+            raised = False
+        except KeyError:
+            raised = True
+        check("G13.4 work 异常原样再抛", raised)
+    finally:
+        splash._import_tk = orig_tk
+    # server.main：弹不出来的原因须打印出来
+    orig_run = splash.run_with_splash
+    splash.run_with_splash = lambda w, **kw: (w(lambda t: None), "没有图形桌面：测试")
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = server.main(["--root", os.path.join(tempfile.gettempdir(),
+                                                     "mdcg-console-none-%d" % os.getpid())])
+    finally:
+        splash.run_with_splash = orig_run
+    out = buf.getvalue()
+    check("G13.5 main 打印小窗没显示的原因", "没有图形桌面：测试" in out, out[-200:])
+    check("G13.5 main 找不到库仍返回 2", rc == 2, repr(rc))
+    with open(os.path.join(_HERE, "console", "splash.py"), encoding="utf-8") as f:
+        src = f.read()
+    bad = [w for w in (r"\bopen\(", r"\.write\(", r"import api", r"from \. import",
+                       r"from md_cg", r"os\.remove", r"shutil") if re.search(w, src)]
+    check("G13.6 splash.py 不读写文件、不碰记忆库", not bad, str(bad))
+    try:
+        tk = splash._import_tk()
+        tk.Tk().destroy()
+        has_gui = True
+    except Exception:                                   # noqa: BLE001
+        has_gui = False
+    if not has_gui:
+        print("  [跳过] G13.7 真弹窗（本机没有图形桌面）")
+        return
+    import time as _t
+    t0 = _t.monotonic()
+    r, why = splash.run_with_splash(lambda st: (st("正在测试…"), "R")[1], env={})
+    dt = _t.monotonic() - t0
+    check("G13.7 真弹窗：结果照回、原因为空", (r, why) == ("R", None), repr((r, why)))
+    check("G13.7 真弹窗：最短显示后自动关闭（<5s）", splash._MIN_SHOW <= dt < 5, "%.2fs" % dt)
+
+
 # ---- 定点变异：每条都须让守卫点红 ----
 def _mutations():
     orig_search = api.search
@@ -394,6 +470,17 @@ def _mutations():
     orig_inspect = api.inspect
     orig_cls = api._secure_cls
     orig_node = api.node
+    orig_splash = splash.run_with_splash
+
+    def m15_silent(work, enabled=True, env=None, on_cancel=None):   # G13：弹不出来不说原因
+        r, why = orig_splash(work, enabled, env, on_cancel)
+        return r, (None if why != "已关闭" else why)
+
+    def m16_swallow(work, enabled=True, env=None, on_cancel=None):  # G13：吞掉 work 的异常
+        try:
+            return orig_splash(work, enabled, env, on_cancel)
+        except Exception:                                # noqa: BLE001
+            return None, "已关闭"
 
     def m12_plain_secure():                              # G12：退回直接构造 MdCGSecure
         class Plain(MdCGSecure):
@@ -480,6 +567,8 @@ def _mutations():
         ("M12 退回直接构造 MdCGSecure", api, "_secure_cls", m12_plain_secure),
         ("M13 缺密钥仍尝试解密", api, "_secure_cls", m13_audit_locked),
         ("M14 已加密报成找不到", api, "node", m14_node_not_found),
+        ("M15 小窗弹不出不说原因", splash, "run_with_splash", m15_silent),
+        ("M16 小窗吞掉启动异常", splash, "run_with_splash", m16_swallow),
     ]
 
 
