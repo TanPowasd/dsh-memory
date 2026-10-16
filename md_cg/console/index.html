@@ -6,21 +6,33 @@
 <title>灵枢 · 记忆控制台</title>
 <style>
 :root{
-  --bg:#f6f7f9; --panel:#ffffff; --line:#e3e6eb; --txt:#1d2330; --sub:#5f6b7d; --faint:#8a94a6;
-  --accent:#3b6ff5; --accent-soft:#e9effe; --ok:#1f9d6b; --warn:#c27a12; --bad:#d14b4b;
-  --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 16px rgba(16,24,40,.06);
-  --radius:12px;
+  /* 亮色：纸本档案——暖纸底、墨色字、墨蓝强调、朱砂印章；发丝线代替投影，小圆角，宋体标题 */
+  --bg:#f4f1e8; --panel:#fbf9f3; --line:#dcd5c5; --txt:#24211c; --sub:#5b554a; --faint:#8e8778;
+  --accent:#2b4c6f; --accent-soft:#e6e9e6; --ok:#3f7350; --warn:#9a6a16; --bad:#9e3326;
+  --shadow:none;
+  --radius:4px; --pill:3px; --head:"Noto Serif SC","Source Han Serif SC","Songti SC","SimSun",serif;
+  --seal:#a63d25; --nav-r:0 4px 4px 0; --seal-r:3px; --nav-on:transparent; --nav-bar:var(--accent);
+  --ly-knowledge:#2b4c6f; --ly-contextual:#4b7556; --ly-self:#8a4867; --ly-goals:#9a6a16;
+  --ly-anchor:#7d6420; --ly-structural:#646a72; --ly-rejected:#9e3326; --ly-unresolved:#8e8778;
 }
 :root[data-theme="dark"]{
   --bg:#14161b; --panel:#1c1f26; --line:#2b303a; --txt:#e7e9ee; --sub:#a3acbb; --faint:#7c8596;
   --accent:#7b9bff; --accent-soft:#232c45; --ok:#4cc79a; --warn:#e3a54a; --bad:#ef7a7a;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+  --radius:12px; --pill:999px; --head:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif; --seal:linear-gradient(135deg,#3b6ff5,#8a5cf6); --seal-r:8px; --nav-r:9px;
+  --nav-on:var(--accent-soft); --nav-bar:transparent;
+  --ly-knowledge:#3b6ff5; --ly-contextual:#14a38b; --ly-self:#d0569b; --ly-goals:#d08a12;
+  --ly-anchor:#b8860b; --ly-structural:#6b7a90; --ly-rejected:#d14b4b; --ly-unresolved:#8a94a6;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#14161b; --panel:#1c1f26; --line:#2b303a; --txt:#e7e9ee; --sub:#a3acbb; --faint:#7c8596;
     --accent:#7b9bff; --accent-soft:#232c45; --ok:#4cc79a; --warn:#e3a54a; --bad:#ef7a7a;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25);
+    --radius:12px; --pill:999px; --head:"Microsoft YaHei UI","Microsoft YaHei","Segoe UI","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif; --seal:linear-gradient(135deg,#3b6ff5,#8a5cf6); --seal-r:8px; --nav-r:9px;
+    --nav-on:var(--accent-soft); --nav-bar:transparent;
+    --ly-knowledge:#3b6ff5; --ly-contextual:#14a38b; --ly-self:#d0569b; --ly-goals:#d08a12;
+    --ly-anchor:#b8860b; --ly-structural:#6b7a90; --ly-rejected:#d14b4b; --ly-unresolved:#8a94a6;
   }
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -35,7 +47,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 header{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 20px;
   background:var(--panel);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;width:184px;font-weight:700;letter-spacing:1px}
-.brand .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#3b6ff5,#8a5cf6);
+.brand .dot{width:26px;height:26px;border-radius:var(--seal-r);background:var(--seal);font-family:var(--head);
   display:grid;place-items:center;color:#fff;font-size:14px}
 .search{flex:1;max-width:680px;position:relative}
 .search input{width:100%;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--bg);
@@ -46,15 +58,15 @@ header{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 20px;
 kbd{font:12px/20px Consolas,monospace;padding:0 6px;border:1px solid var(--line);border-bottom-width:2px;
   border-radius:5px;color:var(--sub);background:var(--panel)}
 .tools{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--sub);font-size:12px}
-.ro{padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.ro{padding:3px 10px;border-radius:var(--pill);background:var(--accent-soft);color:var(--accent);font-weight:600}
 .iconbtn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--sub)}
 .iconbtn:hover{background:var(--bg);color:var(--txt)}
 
 /* 侧栏 */
 nav{background:var(--panel);border-right:1px solid var(--line);padding:14px 10px;display:flex;flex-direction:column;gap:2px;overflow:auto}
-nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;color:var(--sub);text-decoration:none}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--nav-r);color:var(--sub);text-decoration:none}
 nav a:hover{background:var(--bg);color:var(--txt)}
-nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav a.on{background:var(--nav-on);color:var(--accent);font-weight:600;box-shadow:inset 2px 0 0 var(--nav-bar)}
 nav .count{margin-left:auto;font-size:12px;color:var(--faint)}
 nav a.on .count{color:var(--accent)}
 nav .sep{height:1px;background:var(--line);margin:10px 6px}
@@ -68,9 +80,9 @@ nav .rootpath{font-size:12px;color:var(--faint);word-break:break-all;margin-top:
 .status.bad{color:var(--bad)}
 /* 按层分色：卡片左缘色条 + 层徽章同色 */
 [data-ly]{--ly:var(--accent)}
-[data-ly="knowledge"]{--ly:#3b6ff5} [data-ly="contextual"]{--ly:#14a38b} [data-ly="self"]{--ly:#d0569b}
-[data-ly="goals"]{--ly:#d08a12} [data-ly="anchor"]{--ly:#b8860b} [data-ly="structural"]{--ly:#6b7a90}
-[data-ly="rejected"]{--ly:#d14b4b} [data-ly="unresolved"]{--ly:#8a94a6}
+[data-ly="knowledge"]{--ly:var(--ly-knowledge)} [data-ly="contextual"]{--ly:var(--ly-contextual)} [data-ly="self"]{--ly:var(--ly-self)}
+[data-ly="goals"]{--ly:var(--ly-goals)} [data-ly="anchor"]{--ly:var(--ly-anchor)} [data-ly="structural"]{--ly:var(--ly-structural)}
+[data-ly="rejected"]{--ly:var(--ly-rejected)} [data-ly="unresolved"]{--ly:var(--ly-unresolved)}
 .item[data-ly]{border-left:3px solid var(--ly)}
 .badge.b-layer[data-ly]{background:color-mix(in srgb,var(--ly) 14%,transparent);color:var(--ly)}
 nav a[data-ly]:before{content:"";width:8px;height:8px;border-radius:3px;background:var(--ly);flex:none}
@@ -79,7 +91,7 @@ nav a[data-ly]:before{content:"";width:8px;height:8px;border-radius:3px;backgrou
 .ms-form input{flex:1;min-width:220px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:0 12px;font:inherit}
 .ms-form input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .strip{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
-.strip span{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--sub)}
+.strip span{font-size:12px;padding:3px 10px;border-radius:var(--pill);border:1px solid var(--line);background:var(--panel);color:var(--sub)}
 .strip b{color:var(--txt);margin-left:4px}
 .why{margin-top:8px;font-size:12.5px;color:var(--sub);display:flex;flex-direction:column;gap:3px}
 .why .no{color:var(--bad)} .why .yes{color:var(--ok)}
@@ -96,7 +108,8 @@ nav a[data-ly]:before{content:"";width:8px;height:8px;border-radius:3px;backgrou
 
 /* 主区 */
 main{overflow:auto;padding:24px 28px 60px;position:relative}
-h1{font-size:20px;font-weight:700;margin-bottom:4px}
+h1{font-size:20px;font-weight:700;margin-bottom:4px;font-family:var(--head)}
+.box h2,.stat .n,.brand span{font-family:var(--head)}
 .lead{color:var(--sub);margin-bottom:20px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:22px}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
@@ -113,7 +126,7 @@ h1{font-size:20px;font-weight:700;margin-bottom:4px}
 .bars .v{text-align:right;color:var(--sub);font-variant-numeric:tabular-nums}
 
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-.chip{padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--sub);font-size:13px}
+.chip{padding:5px 12px;border-radius:var(--pill);border:1px solid var(--line);background:var(--panel);color:var(--sub);font-size:13px}
 .chip:hover{border-color:var(--accent);color:var(--txt)}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
@@ -144,7 +157,8 @@ h1{font-size:20px;font-weight:700;margin-bottom:4px}
 .tl .ev.chat:before{border-color:var(--faint)}
 
 .empty{text-align:center;color:var(--sub);padding:60px 20px}
-.empty .big{font-size:40px;margin-bottom:8px}
+.empty .big{font:600 30px/1 var(--head);width:56px;height:56px;margin:0 auto 12px;display:grid;place-items:center;
+  border:1.5px solid var(--faint);border-radius:var(--seal-r);color:var(--sub)}
 .empty code,.hint code{font:13px Consolas,monospace;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
 .err{border:1px solid color-mix(in srgb,var(--bad) 40%,var(--line));background:color-mix(in srgb,var(--bad) 7%,var(--panel));
   color:var(--txt);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
@@ -329,7 +343,7 @@ async function viewHome(){
   setMain(skeleton(3));
   const j = await loadOverview();
   if (!j.ok) return setMain(errBox(j));
-  if (!j.total) return setMain(el("div",{class:"empty"}, el("div",{class:"big"},"🌱"),
+  if (!j.total) return setMain(el("div",{class:"empty"}, el("div",{class:"big"},"空"),
     el("h1",null,"这里还没有记忆"),
     el("p",null,"和接入了灵枢的 Agent 聊几句，它记住的东西就会出现在这里。"),
     el("p",{style:"margin-top:8px"},"记忆库位置：", el("code",null,j.root))));
@@ -383,7 +397,7 @@ async function viewSearch(q){
   setMain(el("h1",null,"“"+q+"”"),
     el("p",{class:"lead"}, j.total ? "找到 "+j.total+" 条，按相关度排序。“盲区”表示这条记忆要素不全，引用前请自己判断；想看每条为什么被想起，用记忆显微镜。" : ""),
     j.total ? el("div",{class:"list"}, j.items.map(card))
-      : el("div",{class:"empty"}, el("div",{class:"big"},"🔍"), "没有找到相关记忆。换个说法试试，或者少用几个词。"));
+      : el("div",{class:"empty"}, el("div",{class:"big"},"无"), "没有找到相关记忆。换个说法试试，或者少用几个词。"));
   if (j.total) select(0);
 }
 async function viewTimeline(){
@@ -421,7 +435,7 @@ async function viewReview(){
         el("span",{class:"id"}, x.pid||"")),
       el("div",{class:"snip"}, x.summary||"（无摘要）"),
       el("div",{class:"meta"}, el("span",null, ago(x.created_at)), ...(x.tags||[]).map(t=>el("span",{class:"tag"},t))))))
-      : el("div",{class:"empty"}, el("div",{class:"big"},"✅"), "没有待复核的内容。"));
+      : el("div",{class:"empty"}, el("div",{class:"big"},"毕"), "没有待复核的内容。"));
 }
 
 // ---- 记忆显微镜：每条命中为什么被想起 / 换个身份会不会被挡 ----
@@ -435,7 +449,7 @@ async function viewInspect(q, clr){
       title:"一个非设计者、另开会话的 Agent，最高可读 "+k, onclick:()=>{ if (input.value.trim()) go(k); else location.hash="/inspect/"+k; }}, CLEAR[k])));
   const head = [el("h1",null,"记忆显微镜"),
     el("p",{class:"lead"},"看一句话会让 Agent 想起哪些记忆、每条能不能直接用，以及换成权限更低的 Agent 时哪些会被挡掉。"), form, chips];
-  if (!q){ setMain(...head, el("div",{class:"empty"}, el("div",{class:"big"},"⌖"), "输入一句话开始检查。")); input.focus(); return; }
+  if (!q){ setMain(...head, el("div",{class:"empty"}, el("div",{class:"big"},"问"), "输入一句话开始检查。")); input.focus(); return; }
   setMain(...head, skeleton(3));
   const j = await get("/api/inspect?k=50&clearance="+encodeURIComponent(clr)+"&q="+encodeURIComponent(q));
   if (!j.ok) return setMain(...head, errBox(j));
@@ -452,7 +466,7 @@ async function viewInspect(q, clr){
   selIdx = -1;
   setMain(...head, strip,
     j.total ? el("div",{class:"list"}, j.items.map(c=>card(c, why(c))))
-      : el("div",{class:"empty"}, el("div",{class:"big"},"🔍"), "这句话没有让 Agent 想起任何记忆。"),
+      : el("div",{class:"empty"}, el("div",{class:"big"},"无"), "这句话没有让 Agent 想起任何记忆。"),
     el("p",{class:"lead",style:"margin-top:14px;font-size:12px"}, j.note||""));
   if (j.total) select(0);
 }
